@@ -1,0 +1,107 @@
+https://docs.gitlab.com/runner/configuration/configuring_runner_operator.html
+
+https://docs.gitlab.com/runner/executors/kubernetes.html
+
+https://docs.gitlab.com/runner/register/index.html#runners-configuration-template-file
+
+https://cloud.redhat.com/blog/your-guide-to-the-gitlab-operator-on-openshift
+
+https://docs.gitlab.com/ee/ci/docker/authenticate_registry.html
+
+
+cat > gitlab-runner-secret.yml <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-runner-secret
+type: Opaque
+stringData:
+  runner-registration-token: GR1348941qyoPEpnXBHS7EJnQBPjg
+EOF
+
+
+
+oc apply -f gitlab-runner-secret.yml
+
+
+cat > gitlab-runner.yml << EOF
+apiVersion: apps.gitlab.com/v1beta2
+kind: Runner
+metadata:
+  name: gitlab-runner
+spec:
+  gitlabUrl: http://gitlab.qualifacts.org/
+  buildImage: alpine
+  token: gitlab-runner-secret
+  tags: openshift
+  serviceaccount: external-registry
+EOF
+
+oc apply -f gitlab-runner.yml
+
+
+########################################## Pull 
+
+cat > secret-external-registry.yml << EOF
+apiVersion: v1
+data:
+    .dockerconfigjson: ewogICAgImF1dGhzIjogewogICAgICAicmVnaXN0cnkucXVhbGlmYWN0cy5jb20iOiB7CiAgICAgICJhdXRoIjogIkpHRndjRHBSUnpRek0wbEtTVGRZTkVSTVUwczVVRlZXVDFKVlUwaEtVVVJHVUV4RVFqRktXRVJPVkVGU1NEWk5PRTFTTjFoQ1VUZEVSemRLUmpSVVMxTlZVRkJMUlRCWU1raERWVFUyTkZGRFUwRkhNRlZZV1V4WlJFVlBTRGxSVGxoT1dsUldTVEZFVHpsRFdsZEZXbFpKUXpWTFJsQTNSVE5IVVVVPSIKICAgICAgfQogICAgfQp9
+kind: Secret
+metadata:
+    name: external-registry
+    namespace: gitlab-runner
+type: kubernetes.io/dockerconfigjson
+EOF
+oc apply -f secret-external-registry.yml
+
+cat > serviceaccount-external-registry.yml << EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-registry
+  namespace: gitlab-runner
+imagePullSecrets:
+  - name: external-registry
+EOF
+
+oc apply -f serviceaccount-external-registry.yml
+
+
+kubectl edit serviceaccount gitlab-runner -n gitlab-runner
+
+kubectl edit serviceaccount default -n gitlab-runner
+
+oc edit runner/gitlab-runner
+
+
+kubectl patch serviceaccount default -p '{"imagePullSecrets": [{"name": "registry-credentials"}]}'
+
+
+
+
+cat > docker-hub.yml << EOF
+apiVersion: v1
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyJkb2NrZXIuaW8iOnsidXNlcm5hbWUiOiJxdWFsaWZhY3RzIiwicGFzc3dvcmQiOiJEaHQ9ZmpZdm1HYTVAXT8iLCJhdXRoIjoiY1hWaGJHbG1ZV04wY3pwRWFIUTlabXBaZG0xSFlUVkFYVDg9In19fQ==
+kind: Secret
+metadata:
+  name: docker-hub
+type: kubernetes.io/dockerconfigjson
+EOF
+oc apply -f docker-hub.yml
+
+oc secrets link serviceaccount/default secrets/docker-hub --for=pull
+
+
+
+cat > runner-custom-config-map.yml << EOF
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: runner-custom-config-map
+  namespace: runner-namespace
+data:
+  config.toml: |-
+    [[runners]]
+      [runners.kubernetes]
+        image_pull_secrets = ["docker-hub"]

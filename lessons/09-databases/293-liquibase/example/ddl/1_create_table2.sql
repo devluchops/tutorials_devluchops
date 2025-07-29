@@ -1,0 +1,1 @@
+create table test2 ( test_id int );

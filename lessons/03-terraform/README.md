@@ -1,9 +1,10 @@
 # 03 Terraform
 
-Este directorio contiene 11 lecciones relacionadas con 03 terraform.
+Este directorio contiene 12 lecciones relacionadas con 03 terraform.
 
 ## Lecciones incluidas:
 
+- [021] Terragrunt
 - [053] How To Run Terraform From Circleci
 - [069] How To Create Gke Cluster Using Terraform From Scratch
 - [108] How To Create Gke Cluster Using Terraform
@@ -22,4 +23,4 @@ Este directorio contiene 11 lecciones relacionadas con 03 terraform.
 - [Ver todas las categorías](../)
 
 ---
-*Total de lecciones: 11*
+*Total de lecciones: 12*

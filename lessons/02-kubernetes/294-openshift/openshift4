@@ -1,0 +1,40 @@
+oc get clusteroperator
+
+
+oc get clusteroperator/ingress
+
+Nginx Ingress Controller
+
+
+Custom Resource Definition
+
+
+
+oc get ingressclass
+
+
+nginxplus: false
+
+
+statefullset
+deployment
+deploymentconfig
+
+
+
+service:
+
+http: 31000
+https: 32000
+
+
+
+
+
+docker-hub
+sa-ingress
+
+
+
+wikdcardTLS:
+

@@ -1,0 +1,174 @@
+https://github.com/kubernetes/ingress-nginx/blob/main/docs/user-guide/nginx-configuration/annotations.md
+
+
+######## Create Secret ########
+
+# oc create secret tls qualifacts-org-2023 --cert=qualifacts_org_all.crt --key=../common/qualifacts_org.key
+
+######## API GATEWAY ########
+
+cat > ingress-api-gateway.yml << EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-api-gateway
+  namespace: qsi-devops
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - devops-dev-api.qualifacts.org
+    secretName: qualifacts-org-2023
+  rules:
+  - host: devops-dev-api.qualifacts.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8083
+EOF
+oc apply -f ingress-api-gateway.yml
+
+https://devops-dev-api.qualifacts.org:32000
+
+######## CONFIG-SERVER ########
+
+cat > ingress-config-server.yml << EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-config-server
+  namespace: qsi-devops
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - config-server-qsi-devops-dev.qualifacts.org
+    secretName: qualifacts-org-2023
+  rules:
+  - host: config-server-qsi-devops-dev.qualifacts.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: config-server
+            port:
+              number: 8888
+EOF
+oc apply -f ingress-config-server.yml
+
+
+https://config-server-qsi-devops-dev.qualifacts.org:32000/environment/containerprd/release
+https://config-server-qsi-devops-dev.qualifacts.org:32000/environment
+
+######## WEBAPP_CARELOGIC ########
+
+cat > ingress-webapp-carelogic.yml << EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-config-server
+  namespace: qsi-devops
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - qsi-devops-dev.qualifacts.org
+    secretName: qualifacts-org-2023
+  rules:
+  - host: qsi-devops-dev.qualifacts.org
+    http:
+      paths:
+      - path: /carelogic/api/
+        pathType: Prefix
+        backend:
+          service:
+            name: webapp-carelogic
+            port:
+              number: 8080
+      - path: /carelogic/content
+        pathType: Prefix
+        backend:
+          service:
+            name: webapp-carelogic
+            port:
+              number: 8080
+      - path: /carelogic/manage
+        pathType: Prefix
+        backend:
+          service:
+            name: webapp-carelogic
+            port:
+              number: 8080
+      - path: /carelogic/monitor
+        pathType: Prefix
+        backend:
+          service:
+            name: webapp-carelogic
+            port:
+              number: 8080
+EOF
+oc apply -f ingress-webapp-carelogic.yml
+
+
+https://qsi-devops-dev.qualifacts.org:32000/carelogic/content
+
+
+######## CONFIG-SERVER HTTP ########
+
+cat > ingress-config-server-http.yml << EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-config-server-http
+  namespace: qsi-devops
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: config-server-qsi-devops-dev-http.qualifacts.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: config-server
+            port:
+              number: 8888
+EOF
+oc apply -f ingress-config-server-http.yml
+
+http://config-server-qsi-devops-dev-http.qualifacts.org:31000/environment/containerprd/release
+
+
+######## CONFIG-SERVER HTTP ########
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-kong-controlplane-admin-api-port
+  namespace: qsi-devops
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host:  api-admin-dev.qualifacts.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kong-controlplane 
+                port:
+                  number: 8444

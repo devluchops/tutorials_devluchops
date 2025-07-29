@@ -1,0 +1,19 @@
+export JDBC_URL=jdbc:mariadb://10.10.88.14:3306/mysql
+export RDS_USERNAME=root
+export RDS_PASSWORD=Admin456
+
+liquibase validate --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug
+
+liquibase update --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug
+
+liquibase tag 123 --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD}
+
+liquibase updateSQL --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug
+
+liquibase rollback --tag=18994 --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug
+
+# licensed commands
+
+liquibase rollbackOneUpdate --force --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug
+
+liquibase checks run --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug

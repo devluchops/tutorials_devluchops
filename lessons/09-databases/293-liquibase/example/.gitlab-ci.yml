@@ -1,0 +1,94 @@
+stages:
+  - validate_dev
+  - deploy_dev
+  - validate_qa
+  - deploy_qa
+
+.functions: &functions |
+  function isUpToDate(){
+    status=$(liquibase status --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --verbose)
+    if [[ $status == *'is up to date'* ]]; then echo "database is already up to date" & exit 0; fi;
+  }
+
+.liquibase_job:
+  before_script:
+    - >
+      if [[ "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}" == "dev" || "${CI_COMMIT_BRANCH}" == "dev" ]]; then
+        export BRANCH="dev"
+        export JDBC_URL=${JDBC_URL_DEV}
+        export RDS_USERNAME=${RDS_USERNAME_DEV}
+        export RDS_PASSWORD=${RDS_PASSWORD_DEV}
+      elif [[ "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}" == "qa" || "${CI_COMMIT_BRANCH}" == "qa" ]]; then
+        export BRANCH="qa"
+        export JDBC_URL=${JDBC_URL_QA}
+        export RDS_USERNAME=${RDS_USERNAME_QA}
+        export RDS_PASSWORD=${RDS_PASSWORD_QA}
+      fi
+    - env
+    - *functions
+    - isUpToDate
+
+
+# dev
+validate_dev:
+  extends: .liquibase_job
+  stage: validate_dev
+  script:
+    - liquibase validate --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug 
+  only:
+    refs:
+      - merge_requests
+      - dev
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev" || $CI_COMMIT_BRANCH == "dev"
+  environment:
+    name: dev
+  tags:
+    - gitlab-runner
+deploy_dev:
+  extends: .liquibase_job
+  stage: deploy_dev
+  script:
+    - liquibase update --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logFile=${CI_JOB_NAME}_${CI_PIPELINE_ID}.log --logLevel=debug
+    - liquibase tag $CI_PIPELINE_ID --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD}
+  dependencies:
+    - validate_dev
+  only:
+    refs:
+      - dev
+  environment:
+    name: dev
+  tags:
+    - gitlab-runner
+# qa
+validate_qa:
+  extends: .liquibase_job
+  stage: validate_qa
+  script:
+    - liquibase validate --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logLevel=debug 
+  only:
+    refs:
+      - merge_requests
+      - qa
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qa" || $CI_COMMIT_BRANCH == "qa"
+
+  environment:
+    name: qa
+  tags:
+    - gitlab-runner
+deploy_qa:
+  extends: .liquibase_job
+  stage: deploy_qa
+  script:
+    - liquibase update --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD} --changelog-file=db.changelog-master.xml --logFile=${CI_JOB_NAME}_${CI_PIPELINE_ID}.log --logLevel=debug
+    - liquibase tag $CI_PIPELINE_ID --url=${JDBC_URL} --username=${RDS_USERNAME} --password=${RDS_PASSWORD}
+  dependencies:
+    - validate_qa
+  only:
+    refs:
+      - qa
+  environment:
+    name: qa
+  tags:
+    - gitlab-runner
