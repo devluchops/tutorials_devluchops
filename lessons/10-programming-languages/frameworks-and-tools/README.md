@@ -19,6 +19,9 @@ Esta sección contiene tutoriales sobre frameworks, protocolos, herramientas y t
 - **191** - [Types of Load Balancing Algorithms](./191-types-of-load-balancing-algorithms/)
 - **006** - [Instructions to Create VPC](./006-instructions-to-create-vpc/)
 
+### 🔒 SSL & Certificados
+- **285** - [SSL Certificate Validation Tool (SSLPoke)](./285-ssl-certificate-validation-tool/)
+
 ## 🎯 Casos de Uso por Herramienta
 
 ### Apache Kafka
@@ -110,5 +113,6 @@ upstream backend {
 - [Ver Comparaciones de Performance](../comparisons/)
 - [Ver Tutoriales de Golang](../golang/)
 
+
 ---
-*Frameworks y Herramientas: 9 tutoriales*
+*Frameworks y Herramientas: 10 tutoriales*
