@@ -1,0 +1,55 @@
+# configs/artillery-config.yml
+config:
+  target: 'https://httpbin.org'
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 50
+      name: "Ramp up load"
+    - duration: 300
+      arrivalRate: 100
+      name: "Sustained load"
+    - duration: 60
+      arrivalRate: 200
+      name: "Peak load"
+  processor: "./processor.js"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "Artillery Load Test"
+
+scenarios:
+  - name: "API Testing"
+    weight: 70
+    flow:
+      - get:
+          url: "/get"
+      - post:
+          url: "/post"
+          json:
+            email: "test@example.com"
+            password: "password123"
+            timestamp: "{{ $timestamp }}"
+      - get:
+          url: "/headers"
+      - get:
+          url: "/status/200"
+
+  - name: "Error Testing"
+    weight: 20
+    flow:
+      - get:
+          url: "/status/{{ $pick(400,401,403,404,500) }}"
+      - get:
+          url: "/delay/{{ $randomInt(1,5) }}"
+
+  - name: "Heavy Payload"
+    weight: 10
+    flow:
+      - post:
+          url: "/post"
+          json:
+            data: "{{ $randomString(1000) }}"
+            numbers: "{{ $range(1, 100) }}"

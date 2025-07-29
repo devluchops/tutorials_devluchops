@@ -1,0 +1,22 @@
+{
+  "name": "pulumi-multi-cloud-example",
+  "version": "1.0.0",
+  "description": "Multi-cloud infrastructure with Pulumi",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "pulumi up",
+    "preview": "pulumi preview",
+    "destroy": "pulumi destroy"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.90.0",
+    "@pulumi/aws": "^6.10.0",
+    "@pulumi/gcp": "^7.5.0",
+    "@pulumi/azure-native": "^2.15.0"
+  }
+}

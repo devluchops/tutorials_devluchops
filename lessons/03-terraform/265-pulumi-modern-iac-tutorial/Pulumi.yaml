@@ -1,0 +1,47 @@
+name: pulumi-modern-iac-tutorial
+runtime: 
+  name: nodejs
+  options:
+    typescript: true
+description: Modern Infrastructure as Code with Pulumi
+
+config:
+  environments:
+    type: object
+    default:
+      dev:
+        cidr: "10.0.0.0/16"
+        availability_zones: ["us-west-2a", "us-west-2b"]
+        instance_type: "t3.micro"
+        instance_count: 1
+        min_instances: 1
+        max_instances: 3
+        auto_scaling: true
+        ami_id: "ami-0c02fb55956c7d316"
+        key_name: "my-key-pair"
+        cpu_threshold_high: 70
+        cpu_threshold_low: 30
+      staging:
+        cidr: "10.1.0.0/16"
+        availability_zones: ["us-west-2a", "us-west-2b", "us-west-2c"]
+        instance_type: "t3.small"
+        instance_count: 2
+        min_instances: 2
+        max_instances: 5
+        auto_scaling: true
+        ami_id: "ami-0c02fb55956c7d316"
+        key_name: "my-key-pair"
+        cpu_threshold_high: 75
+        cpu_threshold_low: 25
+      prod:
+        cidr: "10.2.0.0/16"
+        availability_zones: ["us-east-1a", "us-east-1b", "us-east-1c"]
+        instance_type: "t3.medium"
+        instance_count: 3
+        min_instances: 3
+        max_instances: 10
+        auto_scaling: true
+        ami_id: "ami-0c02fb55956c7d316"
+        key_name: "my-key-pair"
+        cpu_threshold_high: 80
+        cpu_threshold_low: 20

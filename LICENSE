@@ -1,0 +1,53 @@
+MIT License
+
+Copyright (c) 2025 DevLuchOps (https://github.com/devluchops)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Additional Terms
+
+This repository contains educational tutorials and code examples for DevOps and 
+Cloud Engineering practices. While the code is provided under MIT License, we 
+encourage:
+
+1. **Attribution**: If you use substantial portions of this content, please 
+   provide attribution to DevLuchOps and link back to this repository.
+
+2. **Educational Use**: This content is primarily intended for educational 
+   purposes and learning DevOps practices.
+
+3. **Community**: We welcome contributions, improvements, and feedback from 
+   the DevOps community.
+
+4. **Responsibility**: Users are responsible for testing and validating any 
+   code or configurations in their own environments before production use.
+
+## Contact
+
+For questions, contributions, or collaboration:
+- Repository: https://github.com/devluchops/tutorials_devluchops
+- Issues: https://github.com/devluchops/tutorials_devluchops/issues
+
+## Acknowledgments
+
+This repository builds upon the collective knowledge of the DevOps community 
+and incorporates best practices from various open-source projects and industry 
+standards.

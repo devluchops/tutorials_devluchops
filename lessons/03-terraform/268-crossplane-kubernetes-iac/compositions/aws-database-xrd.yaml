@@ -1,0 +1,183 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xawsdatabases.platform.company.com
+  labels:
+    platform: production
+    team: platform-engineering
+spec:
+  group: platform.company.com
+  names:
+    kind: XAWSDatabase
+    plural: xawsdatabases
+  claimNames:
+    kind: AWSDatabase
+    plural: awsdatabases
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              parameters:
+                type: object
+                properties:
+                  # Database Configuration
+                  engine:
+                    type: string
+                    description: "Database engine (mysql, postgres, oracle-ee, sqlserver-ex)"
+                    enum: ["mysql", "postgres", "oracle-ee", "sqlserver-ex"]
+                    default: "postgres"
+                  engineVersion:
+                    type: string
+                    description: "Database engine version"
+                    default: "13.7"
+                  instanceClass:
+                    type: string
+                    description: "RDS instance class"
+                    enum: ["db.t3.micro", "db.t3.small", "db.t3.medium", "db.t3.large", "db.r5.large", "db.r5.xlarge"]
+                    default: "db.t3.micro"
+                  allocatedStorage:
+                    type: integer
+                    description: "Allocated storage in GB"
+                    minimum: 20
+                    maximum: 65536
+                    default: 20
+                  storageType:
+                    type: string
+                    description: "Storage type"
+                    enum: ["gp2", "gp3", "io1", "io2"]
+                    default: "gp3"
+                  storageEncrypted:
+                    type: boolean
+                    description: "Enable storage encryption"
+                    default: true
+                  
+                  # High Availability
+                  multiAZ:
+                    type: boolean
+                    description: "Enable Multi-AZ deployment"
+                    default: false
+                  backupRetentionPeriod:
+                    type: integer
+                    description: "Backup retention period in days"
+                    minimum: 0
+                    maximum: 35
+                    default: 7
+                  backupWindow:
+                    type: string
+                    description: "Preferred backup window"
+                    default: "03:00-04:00"
+                  maintenanceWindow:
+                    type: string
+                    description: "Preferred maintenance window"
+                    default: "sun:04:00-sun:05:00"
+                  
+                  # Database Credentials
+                  databaseName:
+                    type: string
+                    description: "Initial database name"
+                    default: "app"
+                  username:
+                    type: string
+                    description: "Master username"
+                    default: "admin"
+                  
+                  # Networking
+                  subnetGroupName:
+                    type: string
+                    description: "DB subnet group name"
+                  vpcSecurityGroupIds:
+                    type: array
+                    description: "VPC security group IDs"
+                    items:
+                      type: string
+                  port:
+                    type: integer
+                    description: "Database port"
+                    default: 5432
+                  
+                  # Environment and Tagging
+                  environment:
+                    type: string
+                    description: "Environment (dev, staging, prod)"
+                    enum: ["dev", "staging", "prod"]
+                    default: "dev"
+                  costCenter:
+                    type: string
+                    description: "Cost center for billing"
+                  team:
+                    type: string
+                    description: "Team responsible for the database"
+                  
+                  # Monitoring and Performance
+                  monitoringInterval:
+                    type: integer
+                    description: "Enhanced monitoring interval in seconds"
+                    enum: [0, 1, 5, 10, 15, 30, 60]
+                    default: 0
+                  performanceInsightsEnabled:
+                    type: boolean
+                    description: "Enable Performance Insights"
+                    default: false
+                  deletionProtection:
+                    type: boolean
+                    description: "Enable deletion protection"
+                    default: true
+                    
+                required:
+                - environment
+                - team
+            
+          status:
+            type: object
+            properties:
+              endpoint:
+                type: string
+                description: "Database endpoint"
+              port:
+                type: integer
+                description: "Database port"
+              connectionSecret:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+    additionalPrinterColumns:
+    - name: Engine
+      type: string
+      jsonPath: .spec.parameters.engine
+    - name: Class
+      type: string
+      jsonPath: .spec.parameters.instanceClass
+    - name: Environment
+      type: string
+      jsonPath: .spec.parameters.environment
+    - name: Ready
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp

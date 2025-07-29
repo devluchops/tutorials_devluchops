@@ -1,0 +1,257 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: aws-rds-database
+  labels:
+    provider: aws
+    service: rds
+    platform: production
+spec:
+  compositeTypeRef:
+    apiVersion: platform.company.com/v1alpha1
+    kind: XAWSDatabase
+  
+  mode: Pipeline
+  pipeline:
+  - step: create-db-subnet-group
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $dbName := .observed.composite.resource.spec.parameters.databaseName }}
+          {{ $env := .observed.composite.resource.spec.parameters.environment }}
+          {{ $team := .observed.composite.resource.spec.parameters.team }}
+          
+          ---
+          apiVersion: rds.aws.crossplane.io/v1alpha1
+          kind: DBSubnetGroup
+          metadata:
+            name: {{ .observed.composite.resource.metadata.name }}-subnet-group
+            annotations:
+              crossplane.io/external-name: {{ .observed.composite.resource.metadata.name }}-subnet-group
+          spec:
+            forProvider:
+              description: "Database subnet group for {{ $dbName }} in {{ $env }}"
+              subnetIds:
+              {{- if eq $env "prod" }}
+                - subnet-prod-db-1a
+                - subnet-prod-db-1b
+                - subnet-prod-db-1c
+              {{- else if eq $env "staging" }}
+                - subnet-staging-db-1a
+                - subnet-staging-db-1b
+              {{- else }}
+                - subnet-dev-db-1a
+                - subnet-dev-db-1b
+              {{- end }}
+              tags:
+                Environment: {{ $env }}
+                Team: {{ $team }}
+                ManagedBy: crossplane
+                Service: database
+            providerConfigRef:
+              name: aws-provider-config
+  
+  - step: create-db-parameter-group
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $engine := .observed.composite.resource.spec.parameters.engine }}
+          {{ $engineVersion := .observed.composite.resource.spec.parameters.engineVersion }}
+          {{ $env := .observed.composite.resource.spec.parameters.environment }}
+          {{ $team := .observed.composite.resource.spec.parameters.team }}
+          
+          ---
+          apiVersion: rds.aws.crossplane.io/v1alpha1
+          kind: DBParameterGroup
+          metadata:
+            name: {{ .observed.composite.resource.metadata.name }}-params
+            annotations:
+              crossplane.io/external-name: {{ .observed.composite.resource.metadata.name }}-params
+          spec:
+            forProvider:
+              family: {{ $engine }}{{ regexReplaceAll "\\." $engineVersion "" | substr 0 2 }}
+              description: "Parameter group for {{ $engine }} {{ $engineVersion }}"
+              parameters:
+              {{- if eq $engine "postgres" }}
+                - name: shared_preload_libraries
+                  value: "pg_stat_statements"
+                - name: log_statement
+                  value: "all"
+                - name: log_min_duration_statement
+                  value: "1000"
+                - name: max_connections
+                  value: {{ if eq $env "prod" }}"200"{{ else if eq $env "staging" }}"100"{{ else }}"50"{{ end }}
+              {{- else if eq $engine "mysql" }}
+                - name: innodb_buffer_pool_size
+                  value: {{ if eq $env "prod" }}"{DBInstanceClassMemory*3/4}"{{ else }}"{DBInstanceClassMemory/2}"{{ end }}
+                - name: slow_query_log
+                  value: "1"
+                - name: long_query_time
+                  value: "2"
+                - name: max_connections
+                  value: {{ if eq $env "prod" }}"300"{{ else if eq $env "staging" }}"150"{{ else }}"75"{{ end }}
+              {{- end }}
+              tags:
+                Environment: {{ $env }}
+                Team: {{ $team }}
+                ManagedBy: crossplane
+            providerConfigRef:
+              name: aws-provider-config
+  
+  - step: create-password-secret
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          ---
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: {{ .observed.composite.resource.metadata.name }}-password
+            namespace: crossplane-system
+          type: Opaque
+          data:
+            password: {{ randAlphaNum 16 | b64enc }}
+  
+  - step: create-rds-instance
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $spec := .observed.composite.resource.spec.parameters }}
+          {{ $name := .observed.composite.resource.metadata.name }}
+          
+          ---
+          apiVersion: rds.aws.crossplane.io/v1alpha1
+          kind: DBInstance
+          metadata:
+            name: {{ $name }}-db
+            annotations:
+              crossplane.io/external-name: {{ $name }}-db
+          spec:
+            forProvider:
+              # Basic Configuration
+              engine: {{ $spec.engine }}
+              engineVersion: {{ $spec.engineVersion }}
+              dbInstanceClass: {{ $spec.instanceClass }}
+              allocatedStorage: {{ $spec.allocatedStorage }}
+              storageType: {{ $spec.storageType }}
+              storageEncrypted: {{ $spec.storageEncrypted }}
+              
+              # Database Configuration
+              dbName: {{ $spec.databaseName }}
+              username: {{ $spec.username }}
+              passwordSecretRef:
+                name: {{ $name }}-password
+                namespace: crossplane-system
+                key: password
+              port: {{ $spec.port }}
+              
+              # High Availability
+              multiAZ: {{ $spec.multiAZ }}
+              backupRetentionPeriod: {{ $spec.backupRetentionPeriod }}
+              backupWindow: {{ $spec.backupWindow }}
+              maintenanceWindow: {{ $spec.maintenanceWindow }}
+              
+              # Networking
+              dbSubnetGroupName: {{ $name }}-subnet-group
+              vpcSecurityGroupIds: {{ $spec.vpcSecurityGroupIds | toJson }}
+              publiclyAccessible: false
+              
+              # Parameter Group
+              dbParameterGroupName: {{ $name }}-params
+              
+              # Monitoring
+              monitoringInterval: {{ $spec.monitoringInterval }}
+              {{- if gt $spec.monitoringInterval 0 }}
+              monitoringRoleArn: "arn:aws:iam::ACCOUNT-ID:role/rds-monitoring-role"
+              {{- end }}
+              performanceInsightsEnabled: {{ $spec.performanceInsightsEnabled }}
+              {{- if $spec.performanceInsightsEnabled }}
+              performanceInsightsRetentionPeriod: {{ if eq $spec.environment "prod" }}731{{ else }}7{{ end }}
+              {{- end }}
+              
+              # Protection
+              deletionProtection: {{ $spec.deletionProtection }}
+              skipFinalSnapshot: {{ not $spec.deletionProtection }}
+              finalDbSnapshotIdentifier: {{ if $spec.deletionProtection }}{{ $name }}-final-snapshot{{ else }}""{{ end }}
+              
+              # Tags
+              tags:
+                Name: {{ $name }}-database
+                Environment: {{ $spec.environment }}
+                Team: {{ $spec.team }}
+                {{- if $spec.costCenter }}
+                CostCenter: {{ $spec.costCenter }}
+                {{- end }}
+                Engine: {{ $spec.engine }}
+                ManagedBy: crossplane
+                BackupRetention: "{{ $spec.backupRetentionPeriod }}days"
+                
+            providerConfigRef:
+              name: aws-provider-config
+            
+            # Write connection details to a secret
+            writeConnectionSecretsToNamespace: crossplane-system
+            
+            deletionPolicy: {{ if eq $spec.environment "prod" }}Orphan{{ else }}Delete{{ end }}
+  
+  - step: create-connection-secret
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $spec := .observed.composite.resource.spec.parameters }}
+          {{ $name := .observed.composite.resource.metadata.name }}
+          
+          ---
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: {{ $name }}-connection
+            namespace: {{ .observed.composite.resource.spec.claimRef.namespace | default "default" }}
+            labels:
+              app.kubernetes.io/name: database-connection
+              app.kubernetes.io/component: database
+              app.kubernetes.io/managed-by: crossplane
+          type: Opaque
+          stringData:
+            # Connection details
+            host: {{ index .observed.resources "rds-instance" "status" "endpoint" | default "pending" }}
+            port: "{{ $spec.port }}"
+            database: {{ $spec.databaseName }}
+            username: {{ $spec.username }}
+            
+            # Connection URLs
+            url: "{{ $spec.engine }}://{{ $spec.username }}:$(password)@{{ index .observed.resources "rds-instance" "status" "endpoint" | default "pending" }}:{{ $spec.port }}/{{ $spec.databaseName }}"
+            
+            # Application-specific formats
+            {{- if eq $spec.engine "postgres" }}
+            postgres-url: "postgres://{{ $spec.username }}:$(password)@{{ index .observed.resources "rds-instance" "status" "endpoint" | default "pending" }}:{{ $spec.port }}/{{ $spec.databaseName }}?sslmode=require"
+            {{- else if eq $spec.engine "mysql" }}
+            mysql-url: "mysql://{{ $spec.username }}:$(password)@{{ index .observed.resources "rds-instance" "status" "endpoint" | default "pending" }}:{{ $spec.port }}/{{ $spec.databaseName }}?tls=true"
+            {{- end }}
+          data:
+            password: {{ index .observed.resources "password-secret" "data" "password" | default "" }}

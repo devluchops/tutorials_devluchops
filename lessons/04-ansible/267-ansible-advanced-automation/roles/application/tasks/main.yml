@@ -1,0 +1,178 @@
+---
+# Application Role - Deploy and Configure Application
+# This role handles application deployment with multiple strategies
+
+- name: Include environment specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ environment }}.yml"
+    - "defaults.yml"
+
+- name: Create application user and group
+  group:
+    name: "{{ app_group }}"
+    state: present
+  
+- name: Create application user
+  user:
+    name: "{{ app_user }}"
+    group: "{{ app_group }}"
+    system: true
+    shell: /bin/bash
+    home: "{{ app_home }}"
+    create_home: true
+
+- name: Create application directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(app_user) }}"
+    group: "{{ item.group | default(app_group) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ app_home }}" }
+    - { path: "{{ app_home }}/releases" }
+    - { path: "{{ app_home }}/shared" }
+    - { path: "{{ app_home }}/shared/logs" }
+    - { path: "{{ app_home }}/shared/config" }
+    - { path: "{{ app_home }}/shared/uploads" }
+    - { path: "{{ app_config_dir }}" }
+    - { path: "{{ app_log_dir }}" }
+
+- name: Download application artifact
+  get_url:
+    url: "{{ app_artifact_url }}"
+    dest: "{{ app_home }}/releases/{{ app_name }}-{{ app_version }}.tar.gz"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0644'
+    timeout: 300
+  when: deployment_method == 'artifact'
+  register: app_download
+
+- name: Clone application from git
+  git:
+    repo: "{{ app_git_repo }}"
+    dest: "{{ app_home }}/releases/{{ app_version }}"
+    version: "{{ app_git_branch | default('main') }}"
+    force: true
+  become_user: "{{ app_user }}"
+  when: deployment_method == 'git'
+  register: app_git_clone
+
+- name: Extract application artifact
+  unarchive:
+    src: "{{ app_home }}/releases/{{ app_name }}-{{ app_version }}.tar.gz"
+    dest: "{{ app_home }}/releases"
+    remote_src: true
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    creates: "{{ app_home }}/releases/{{ app_version }}"
+  when: deployment_method == 'artifact' and app_download is changed
+
+- name: Install application dependencies
+  command: "{{ app_dependency_command }}"
+  args:
+    chdir: "{{ app_home }}/releases/{{ app_version }}"
+  become_user: "{{ app_user }}"
+  when: app_dependency_command is defined
+  environment:
+    NODE_ENV: "{{ environment }}"
+    PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+
+- name: Build application
+  command: "{{ app_build_command }}"
+  args:
+    chdir: "{{ app_home }}/releases/{{ app_version }}"
+  become_user: "{{ app_user }}"
+  when: app_build_command is defined
+  environment:
+    NODE_ENV: "{{ environment }}"
+    PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+
+- name: Generate application configuration
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "{{ item.mode | default('0644') }}"
+    backup: true
+  loop: "{{ app_config_templates }}"
+  notify: restart application
+
+- name: Create shared symlinks
+  file:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    state: link
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    force: true
+  loop:
+    - { src: "{{ app_home }}/shared/logs", dest: "{{ app_home }}/releases/{{ app_version }}/logs" }
+    - { src: "{{ app_home }}/shared/config", dest: "{{ app_home }}/releases/{{ app_version }}/config" }
+    - { src: "{{ app_home }}/shared/uploads", dest: "{{ app_home }}/releases/{{ app_version }}/uploads" }
+
+- name: Run database migrations
+  command: "{{ app_migration_command }}"
+  args:
+    chdir: "{{ app_home }}/releases/{{ app_version }}"
+  become_user: "{{ app_user }}"
+  when: app_migration_command is defined and run_migrations | default(true)
+  environment:
+    NODE_ENV: "{{ environment }}"
+    DATABASE_URL: "{{ database_url }}"
+
+- name: Generate systemd service file
+  template:
+    src: systemd-service.j2
+    dest: "/etc/systemd/system/{{ app_name }}.service"
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart application
+
+- name: Create current release symlink
+  file:
+    src: "{{ app_home }}/releases/{{ app_version }}"
+    dest: "{{ app_home }}/current"
+    state: link
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    force: true
+  notify: restart application
+
+- name: Start and enable application service
+  systemd:
+    name: "{{ app_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for application to be ready
+  uri:
+    url: "http://localhost:{{ app_port }}/health"
+    method: GET
+    status_code: 200
+  retries: 30
+  delay: 10
+  register: app_health_check
+  until: app_health_check is succeeded
+
+- name: Cleanup old releases
+  shell: |
+    cd {{ app_home }}/releases
+    ls -t | tail -n +{{ keep_releases | default(5) + 1 }} | xargs rm -rf
+  args:
+    executable: /bin/bash
+  become_user: "{{ app_user }}"
+  when: cleanup_old_releases | default(true)
+
+- name: Register successful deployment
+  lineinfile:
+    path: "{{ app_home }}/deployments.log"
+    line: "{{ ansible_date_time.iso8601 }}: {{ app_version }} deployed successfully"
+    create: true
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"

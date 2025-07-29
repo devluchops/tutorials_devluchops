@@ -1,0 +1,120 @@
+---
+# Common Role - Basic System Setup
+# This role provides common system configuration for all servers
+
+- name: Update system packages
+  package:
+    name: "*"
+    state: latest
+  when: ansible_os_family in ['RedHat', 'Debian']
+  tags: [system_update]
+
+- name: Install essential packages
+  package:
+    name: "{{ essential_packages[ansible_os_family] }}"
+    state: present
+  vars:
+    essential_packages:
+      RedHat:
+        - curl
+        - wget
+        - vim
+        - git
+        - htop
+        - nc
+        - telnet
+        - rsync
+        - unzip
+        - chrony
+      Debian:
+        - curl
+        - wget
+        - vim
+        - git
+        - htop
+        - netcat
+        - telnet
+        - rsync
+        - unzip
+        - chrony
+
+- name: Configure timezone
+  timezone:
+    name: "{{ system_timezone | default('UTC') }}"
+  notify: restart chrony
+
+- name: Configure NTP
+  template:
+    src: chrony.conf.j2
+    dest: "{{ chrony_config_path[ansible_os_family] }}"
+    backup: true
+  vars:
+    chrony_config_path:
+      RedHat: /etc/chrony.conf
+      Debian: /etc/chrony/chrony.conf
+  notify: restart chrony
+
+- name: Ensure chrony is running
+  systemd:
+    name: chronyd
+    state: started
+    enabled: true
+
+- name: Configure system limits
+  pam_limits:
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop:
+    - { domain: '*', type: 'soft', item: 'nofile', value: '65536' }
+    - { domain: '*', type: 'hard', item: 'nofile', value: '65536' }
+    - { domain: '*', type: 'soft', item: 'nproc', value: '4096' }
+    - { domain: '*', type: 'hard', item: 'nproc', value: '4096' }
+
+- name: Configure kernel parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-custom.conf
+    reload: true
+  loop:
+    - { name: 'vm.swappiness', value: '10' }
+    - { name: 'net.core.rmem_max', value: '16777216' }
+    - { name: 'net.core.wmem_max', value: '16777216' }
+    - { name: 'net.ipv4.tcp_rmem', value: '4096 65536 16777216' }
+    - { name: 'net.ipv4.tcp_wmem', value: '4096 65536 16777216' }
+
+- name: Create application user
+  user:
+    name: "{{ app_user | default('appuser') }}"
+    system: true
+    shell: /bin/bash
+    home: "/home/{{ app_user | default('appuser') }}"
+    create_home: true
+
+- name: Create application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_user | default('appuser') }}"
+    group: "{{ app_user | default('appuser') }}"
+    mode: '0755'
+  loop:
+    - "/opt/{{ app_name | default('application') }}"
+    - "/var/log/{{ app_name | default('application') }}"
+    - "/var/lib/{{ app_name | default('application') }}"
+    - "/etc/{{ app_name | default('application') }}"
+
+- name: Setup log rotation
+  template:
+    src: logrotate.conf.j2
+    dest: "/etc/logrotate.d/{{ app_name | default('application') }}"
+    mode: '0644'
+
+- name: Configure rsyslog for application
+  template:
+    src: rsyslog-app.conf.j2
+    dest: "/etc/rsyslog.d/50-{{ app_name | default('application') }}.conf"
+  notify: restart rsyslog
+  when: configure_logging | default(true)

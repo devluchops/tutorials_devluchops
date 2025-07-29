@@ -1,0 +1,431 @@
+# GitHub Actions CI/CD Pipeline for Pulumi
+
+name: 'Pulumi Infrastructure CI/CD'
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'lessons/03-terraform/265-pulumi-modern-iac-tutorial/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'lessons/03-terraform/265-pulumi-modern-iac-tutorial/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - deploy
+          - destroy
+
+env:
+  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: 'us-west-2'
+
+jobs:
+  validate:
+    name: 'Validate Code'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lessons/03-terraform/265-pulumi-modern-iac-tutorial
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/package-lock.json
+
+      - name: 'Setup Python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 'Install Node.js Dependencies'
+        run: npm ci
+
+      - name: 'Install Python Dependencies'
+        run: |
+          pip install --upgrade pip
+          pip install pulumi pulumi-aws pulumi-gcp pulumi-azure pulumi-kubernetes
+          pip install pytest pytest-mock boto3
+
+      - name: 'Lint TypeScript Code'
+        run: npm run lint
+
+      - name: 'Type Check TypeScript'
+        run: npm run type-check
+
+      - name: 'Lint Python Code'
+        run: |
+          pip install flake8 black mypy
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          black --check .
+          mypy . --ignore-missing-imports
+
+      - name: 'Run Unit Tests'
+        run: npm test
+
+      - name: 'Run Python Tests'
+        run: pytest tests/ -v
+
+      - name: 'Security Scan'
+        run: |
+          npm audit --audit-level moderate
+          pip install bandit
+          bandit -r . -f json || true
+
+  infrastructure-test:
+    name: 'Infrastructure Tests'
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: lessons/03-terraform/265-pulumi-modern-iac-tutorial
+    
+    strategy:
+      matrix:
+        environment: [dev]
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/package-lock.json
+
+      - name: 'Setup Python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 'Install Dependencies'
+        run: |
+          npm ci
+          pip install --upgrade pip
+          pip install pulumi pulumi-aws pulumi-gcp pulumi-azure pulumi-kubernetes
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 'Pulumi Login'
+        run: pulumi login
+
+      - name: 'Pulumi Stack Select/Create'
+        run: |
+          pulumi stack select ${{ matrix.environment }} || pulumi stack init ${{ matrix.environment }}
+
+      - name: 'Pulumi Configuration'
+        run: |
+          pulumi config set aws:region ${{ env.AWS_REGION }}
+          pulumi config set environment ${{ matrix.environment }}
+
+      - name: 'Pulumi Preview'
+        id: preview
+        run: |
+          pulumi preview --diff --json > preview.json
+          cat preview.json
+
+      - name: 'Comment PR with Preview'
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const previewPath = 'lessons/03-terraform/265-pulumi-modern-iac-tutorial/preview.json';
+            
+            if (fs.existsSync(previewPath)) {
+              const preview = fs.readFileSync(previewPath, 'utf8');
+              const previewData = JSON.parse(preview);
+              
+              const summary = `
+              ## Pulumi Preview Results for ${{ matrix.environment }}
+              
+              **Changes**: ${previewData.changeSummary?.create || 0} to create, ${previewData.changeSummary?.update || 0} to update, ${previewData.changeSummary?.delete || 0} to delete
+              
+              <details>
+              <summary>View Full Preview</summary>
+              
+              \`\`\`json
+              ${JSON.stringify(previewData, null, 2)}
+              \`\`\`
+              
+              </details>
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            }
+
+  deploy-dev:
+    name: 'Deploy to Development'
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: development
+    defaults:
+      run:
+        working-directory: lessons/03-terraform/265-pulumi-modern-iac-tutorial
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/package-lock.json
+
+      - name: 'Setup Python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 'Install Dependencies'
+        run: |
+          npm ci
+          pip install --upgrade pip
+          pip install pulumi pulumi-aws pulumi-gcp pulumi-azure pulumi-kubernetes
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 'Pulumi Login'
+        run: pulumi login
+
+      - name: 'Pulumi Stack Select/Create'
+        run: |
+          pulumi stack select dev || pulumi stack init dev
+
+      - name: 'Pulumi Configuration'
+        run: |
+          pulumi config set aws:region ${{ env.AWS_REGION }}
+          pulumi config set environment dev
+
+      - name: 'Pulumi Up'
+        run: pulumi up --yes --skip-preview
+
+      - name: 'Export Stack Outputs'
+        id: outputs
+        run: |
+          pulumi stack output --json > stack-outputs.json
+          cat stack-outputs.json
+
+      - name: 'Upload Artifacts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-stack-outputs
+          path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/stack-outputs.json
+          retention-days: 30
+
+  deploy-staging:
+    name: 'Deploy to Staging'
+    runs-on: ubuntu-latest
+    needs: [validate, deploy-dev]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    defaults:
+      run:
+        working-directory: lessons/03-terraform/265-pulumi-modern-iac-tutorial
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/package-lock.json
+
+      - name: 'Setup Python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 'Install Dependencies'
+        run: |
+          npm ci
+          pip install --upgrade pip
+          pip install pulumi pulumi-aws pulumi-gcp pulumi-azure pulumi-kubernetes
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: 'us-east-1'
+
+      - name: 'Pulumi Login'
+        run: pulumi login
+
+      - name: 'Pulumi Stack Select/Create'
+        run: |
+          pulumi stack select staging || pulumi stack init staging
+
+      - name: 'Pulumi Configuration'
+        run: |
+          pulumi config set aws:region us-east-1
+          pulumi config set environment staging
+
+      - name: 'Pulumi Up'
+        run: pulumi up --yes --skip-preview
+
+  deploy-production:
+    name: 'Deploy to Production'
+    runs-on: ubuntu-latest
+    needs: [validate, deploy-staging]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.action == 'deploy'
+    environment: production
+    defaults:
+      run:
+        working-directory: lessons/03-terraform/265-pulumi-modern-iac-tutorial
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/package-lock.json
+
+      - name: 'Setup Python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 'Install Dependencies'
+        run: |
+          npm ci
+          pip install --upgrade pip
+          pip install pulumi pulumi-aws pulumi-gcp pulumi-azure pulumi-kubernetes
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: 'us-east-1'
+
+      - name: 'Pulumi Login'
+        run: pulumi login
+
+      - name: 'Pulumi Stack Select/Create'
+        run: |
+          pulumi stack select prod || pulumi stack init prod
+
+      - name: 'Pulumi Configuration'
+        run: |
+          pulumi config set aws:region us-east-1
+          pulumi config set environment prod
+
+      - name: 'Manual Approval Required'
+        run: |
+          echo "Production deployment requires manual approval"
+          echo "Proceeding with deployment after approval..."
+
+      - name: 'Pulumi Up'
+        run: pulumi up --yes --skip-preview
+
+      - name: 'Notify Deployment Success'
+        if: success()
+        run: |
+          echo "Production deployment completed successfully"
+          # Add Slack/Teams notification here
+
+  cleanup:
+    name: 'Cleanup Resources'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    environment: ${{ github.event.inputs.environment }}
+    defaults:
+      run:
+        working-directory: lessons/03-terraform/265-pulumi-modern-iac-tutorial
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: lessons/03-terraform/265-pulumi-modern-iac-tutorial/package-lock.json
+
+      - name: 'Setup Python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 'Install Dependencies'
+        run: |
+          npm ci
+          pip install --upgrade pip
+          pip install pulumi pulumi-aws pulumi-gcp pulumi-azure pulumi-kubernetes
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 'Pulumi Login'
+        run: pulumi login
+
+      - name: 'Pulumi Stack Select'
+        run: pulumi stack select ${{ github.event.inputs.environment }}
+
+      - name: 'Pulumi Destroy'
+        run: |
+          echo "Destroying infrastructure for ${{ github.event.inputs.environment }}"
+          pulumi destroy --yes --skip-preview
+
+      - name: 'Remove Stack'
+        run: pulumi stack rm ${{ github.event.inputs.environment }} --yes

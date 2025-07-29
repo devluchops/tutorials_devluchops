@@ -1,0 +1,279 @@
+---
+# Advanced Ansible Automation - Production Playbook
+# This playbook demonstrates enterprise-level automation patterns
+
+- name: Deploy Multi-Tier Web Application
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    app_name: "web-application"
+    app_version: "{{ app_version | default('latest') }}"
+    environment: "{{ env | default('production') }}"
+    
+    # Environment-specific variables
+    environments:
+      development:
+        app_port: 3000
+        db_host: "dev-db.internal"
+        replicas: 1
+        debug_mode: true
+        log_level: "debug"
+      staging:
+        app_port: 3000
+        db_host: "staging-db.internal"
+        replicas: 2
+        debug_mode: false
+        log_level: "info"
+      production:
+        app_port: 3000
+        db_host: "prod-db.internal"
+        replicas: 3
+        debug_mode: false
+        log_level: "error"
+    
+    # Current environment configuration
+    env_config: "{{ environments[environment] }}"
+    
+  pre_tasks:
+    - name: Validate environment
+      fail:
+        msg: "Invalid environment: {{ environment }}. Must be one of: {{ environments.keys() | list }}"
+      when: environment not in environments.keys()
+    
+    - name: Display deployment information
+      debug:
+        msg: |
+          Deploying {{ app_name }} version {{ app_version }}
+          Environment: {{ environment }}
+          Target hosts: {{ ansible_play_hosts | length }}
+          Configuration: {{ env_config }}
+    
+    - name: Check system requirements
+      assert:
+        that:
+          - ansible_memtotal_mb >= 1024
+          - ansible_processor_vcpus >= 1
+          - ansible_distribution in ['CentOS', 'RedHat', 'Ubuntu', 'Amazon']
+        fail_msg: "System does not meet minimum requirements"
+
+  roles:
+    - role: common
+      tags: [common, setup]
+    
+    - role: security
+      tags: [security, hardening]
+    
+    - role: monitoring
+      tags: [monitoring, observability]
+      when: environment != 'development'
+    
+    - role: database
+      tags: [database, data]
+      when: inventory_hostname in groups['database_servers']
+    
+    - role: application
+      tags: [application, deploy]
+      when: inventory_hostname in groups['app_servers']
+    
+    - role: loadbalancer
+      tags: [loadbalancer, frontend]
+      when: inventory_hostname in groups['lb_servers']
+
+  post_tasks:
+    - name: Verify application health
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:{{ env_config.app_port }}/health"
+        method: GET
+        status_code: 200
+      when: inventory_hostname in groups['app_servers']
+      retries: 5
+      delay: 10
+      tags: [verification, health_check]
+    
+    - name: Register deployment in monitoring
+      uri:
+        url: "{{ monitoring_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          deployment:
+            application: "{{ app_name }}"
+            version: "{{ app_version }}"
+            environment: "{{ environment }}"
+            timestamp: "{{ ansible_date_time.iso8601 }}"
+            hosts: "{{ ansible_play_hosts }}"
+        status_code: [200, 201]
+      when: monitoring_webhook_url is defined
+      delegate_to: localhost
+      run_once: true
+      tags: [monitoring, notification]
+
+  handlers:
+    - name: restart application
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
+        daemon_reload: yes
+      listen: "restart app"
+    
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+      listen: "reload lb"
+    
+    - name: restart monitoring agent
+      systemd:
+        name: "{{ monitoring_agent_service }}"
+        state: restarted
+      listen: "restart monitoring"
+
+---
+# Blue-Green Deployment Playbook
+- name: Blue-Green Deployment Strategy
+  hosts: app_servers
+  become: yes
+  serial: "{{ deployment_batch_size | default('100%') }}"
+  
+  vars:
+    deployment_strategy: "blue_green"
+    health_check_retries: 10
+    health_check_delay: 30
+    
+  tasks:
+    - name: Determine current active environment
+      shell: |
+        if systemctl is-active {{ app_name }}-blue >/dev/null 2>&1; then
+          echo "blue"
+        elif systemctl is-active {{ app_name }}-green >/dev/null 2>&1; then
+          echo "green"
+        else
+          echo "none"
+        fi
+      register: current_env
+      changed_when: false
+    
+    - name: Set deployment target
+      set_fact:
+        active_env: "{{ current_env.stdout }}"
+        target_env: "{{ 'green' if current_env.stdout == 'blue' else 'blue' }}"
+    
+    - name: Deploy to target environment
+      include_tasks: tasks/deploy_app.yml
+      vars:
+        deploy_env: "{{ target_env }}"
+    
+    - name: Health check on target environment
+      uri:
+        url: "http://localhost:{{ target_port }}/health"
+        method: GET
+        status_code: 200
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+      vars:
+        target_port: "{{ 3001 if target_env == 'blue' else 3002 }}"
+    
+    - name: Switch traffic to target environment
+      template:
+        src: nginx_upstream.conf.j2
+        dest: /etc/nginx/conf.d/upstream.conf
+      notify: reload nginx
+      vars:
+        active_backend: "{{ target_env }}"
+    
+    - name: Stop old environment
+      systemd:
+        name: "{{ app_name }}-{{ active_env }}"
+        state: stopped
+      when: active_env != "none"
+      
+    - name: Update active environment marker
+      copy:
+        content: "{{ target_env }}"
+        dest: "/var/lib/{{ app_name }}/active_env"
+
+---
+# Canary Deployment Playbook
+- name: Canary Deployment Strategy
+  hosts: app_servers
+  become: yes
+  
+  vars:
+    canary_percentage: "{{ canary_percentage | default(10) }}"
+    canary_duration: "{{ canary_duration | default(300) }}"
+    
+  tasks:
+    - name: Deploy canary version
+      include_tasks: tasks/deploy_app.yml
+      vars:
+        deploy_env: "canary"
+        app_port: 3003
+    
+    - name: Configure canary traffic split
+      template:
+        src: nginx_canary.conf.j2
+        dest: /etc/nginx/conf.d/canary.conf
+      notify: reload nginx
+    
+    - name: Monitor canary metrics
+      uri:
+        url: "{{ metrics_endpoint }}/api/v1/query"
+        method: GET
+        body_format: form-urlencoded
+        body:
+          query: "rate(http_requests_total{env='canary'}[5m])"
+      register: canary_metrics
+      retries: 6
+      delay: 50
+      delegate_to: localhost
+    
+    - name: Evaluate canary health
+      set_fact:
+        canary_healthy: "{{ canary_metrics.json.data.result | length > 0 and canary_metrics.json.data.result[0].value[1] | float > 0 }}"
+    
+    - name: Promote canary to production
+      block:
+        - name: Scale up canary
+          template:
+            src: nginx_production.conf.j2
+            dest: /etc/nginx/conf.d/upstream.conf
+          notify: reload nginx
+          
+        - name: Stop old version
+          systemd:
+            name: "{{ app_name }}-production"
+            state: stopped
+            
+        - name: Rename canary to production
+          command: |
+            systemctl stop {{ app_name }}-canary
+            mv /etc/systemd/system/{{ app_name }}-canary.service /etc/systemd/system/{{ app_name }}-production.service
+            systemctl daemon-reload
+            systemctl start {{ app_name }}-production
+      when: canary_healthy | bool
+    
+    - name: Rollback canary
+      block:
+        - name: Stop canary
+          systemd:
+            name: "{{ app_name }}-canary"
+            state: stopped
+            
+        - name: Remove canary configuration
+          file:
+            path: /etc/nginx/conf.d/canary.conf
+            state: absent
+          notify: reload nginx
+          
+        - name: Alert about rollback
+          uri:
+            url: "{{ alert_webhook_url }}"
+            method: POST
+            body_format: json
+            body:
+              alert: "Canary deployment rolled back"
+              reason: "Health check failed"
+              timestamp: "{{ ansible_date_time.iso8601 }}"
+      when: not (canary_healthy | bool)

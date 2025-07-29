@@ -1,0 +1,192 @@
+apiVersion: platform.company.com/v1alpha1
+kind: AWSDatabase
+metadata:
+  name: production-api-database
+  namespace: production
+  labels:
+    app: api-server
+    environment: production
+    team: backend
+spec:
+  parameters:
+    # Database Engine Configuration
+    engine: postgres
+    engineVersion: "15.3"
+    instanceClass: db.r5.xlarge
+    allocatedStorage: 100
+    storageType: gp3
+    storageEncrypted: true
+    
+    # Database Settings
+    databaseName: api_production
+    username: api_user
+    port: 5432
+    
+    # High Availability & Backup
+    multiAZ: true
+    backupRetentionPeriod: 30
+    backupWindow: "03:00-04:00"
+    maintenanceWindow: "sun:04:00-sun:05:00"
+    deletionProtection: true
+    
+    # Networking (these should match your VPC setup)
+    subnetGroupName: production-db-subnet-group
+    vpcSecurityGroupIds:
+      - sg-0123456789abcdef0  # production-database-sg
+    
+    # Monitoring & Performance
+    monitoringInterval: 60
+    performanceInsightsEnabled: true
+    
+    # Metadata
+    environment: prod
+    team: backend
+    costCenter: "engineering-backend"
+  
+  # Connection secret will be created in the same namespace
+  writeConnectionSecretsToNamespace: production
+
+---
+apiVersion: platform.company.com/v1alpha1
+kind: AWSDatabase
+metadata:
+  name: staging-api-database
+  namespace: staging
+  labels:
+    app: api-server
+    environment: staging
+    team: backend
+spec:
+  parameters:
+    # Database Engine Configuration
+    engine: postgres
+    engineVersion: "15.3"
+    instanceClass: db.t3.large
+    allocatedStorage: 50
+    storageType: gp3
+    storageEncrypted: true
+    
+    # Database Settings
+    databaseName: api_staging
+    username: api_user
+    port: 5432
+    
+    # High Availability & Backup
+    multiAZ: false
+    backupRetentionPeriod: 7
+    backupWindow: "03:00-04:00"
+    maintenanceWindow: "sun:04:00-sun:05:00"
+    deletionProtection: false
+    
+    # Networking
+    subnetGroupName: staging-db-subnet-group
+    vpcSecurityGroupIds:
+      - sg-0987654321fedcba0  # staging-database-sg
+    
+    # Monitoring & Performance
+    monitoringInterval: 0
+    performanceInsightsEnabled: false
+    
+    # Metadata
+    environment: staging
+    team: backend
+    costCenter: "engineering-backend"
+  
+  writeConnectionSecretsToNamespace: staging
+
+---
+apiVersion: platform.company.com/v1alpha1
+kind: AWSDatabase
+metadata:
+  name: development-api-database
+  namespace: development
+  labels:
+    app: api-server
+    environment: development
+    team: backend
+spec:
+  parameters:
+    # Database Engine Configuration
+    engine: postgres
+    engineVersion: "15.3"
+    instanceClass: db.t3.micro
+    allocatedStorage: 20
+    storageType: gp3
+    storageEncrypted: true
+    
+    # Database Settings
+    databaseName: api_dev
+    username: api_user
+    port: 5432
+    
+    # High Availability & Backup
+    multiAZ: false
+    backupRetentionPeriod: 1
+    backupWindow: "03:00-04:00"
+    maintenanceWindow: "sun:04:00-sun:05:00"
+    deletionProtection: false
+    
+    # Networking
+    subnetGroupName: development-db-subnet-group
+    vpcSecurityGroupIds:
+      - sg-abcdef0123456789a  # development-database-sg
+    
+    # Monitoring & Performance
+    monitoringInterval: 0
+    performanceInsightsEnabled: false
+    
+    # Metadata
+    environment: dev
+    team: backend
+    costCenter: "engineering-backend"
+  
+  writeConnectionSecretsToNamespace: development
+
+---
+# Example MySQL Database for a different application
+apiVersion: platform.company.com/v1alpha1
+kind: AWSDatabase
+metadata:
+  name: production-analytics-database
+  namespace: production
+  labels:
+    app: analytics-service
+    environment: production
+    team: data
+spec:
+  parameters:
+    # Database Engine Configuration
+    engine: mysql
+    engineVersion: "8.0.35"
+    instanceClass: db.r5.2xlarge
+    allocatedStorage: 500
+    storageType: io1
+    storageEncrypted: true
+    
+    # Database Settings
+    databaseName: analytics
+    username: analytics_user
+    port: 3306
+    
+    # High Availability & Backup
+    multiAZ: true
+    backupRetentionPeriod: 35
+    backupWindow: "02:00-03:00"
+    maintenanceWindow: "sat:03:00-sat:04:00"
+    deletionProtection: true
+    
+    # Networking
+    subnetGroupName: production-db-subnet-group
+    vpcSecurityGroupIds:
+      - sg-0123456789abcdef1  # production-analytics-db-sg
+    
+    # Monitoring & Performance
+    monitoringInterval: 60
+    performanceInsightsEnabled: true
+    
+    # Metadata
+    environment: prod
+    team: data
+    costCenter: "data-analytics"
+  
+  writeConnectionSecretsToNamespace: production
