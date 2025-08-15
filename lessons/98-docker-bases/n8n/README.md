@@ -8,7 +8,7 @@ Complete Docker setup for running n8n workflow automation platform with PostgreS
 - PostgreSQL 15 database for production use
 - Traefik reverse proxy with automatic HTTPS
 - Local data persistence with `./data` volume mount
-- Custom domain support (n8n.localhost.com)
+- Custom domain support (n8n.devluchops.com)
 - Docker Compose for easy orchestration
 
 ## Quick Start
@@ -16,7 +16,7 @@ Complete Docker setup for running n8n workflow automation platform with PostgreS
 ### 1. Configure hosts file
 Add this line to your `/etc/hosts` file:
 ```
-127.0.0.1 n8n.localhost.com
+127.0.0.1 n8n.devluchops.com
 ```
 
 ### 2. Start services
@@ -25,7 +25,7 @@ make up
 ```
 
 ### 3. Access n8n
-Open: **https://n8n.localhost.com**
+Open: **https://n8n.devluchops.com**
 
 ### View logs
 ```bash
