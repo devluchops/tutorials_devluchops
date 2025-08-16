@@ -1,8 +1,8 @@
-.PHONY: up down stop clean logs shell help
+.PHONY: up down stop clean logs shell tunnel tunnel-stop help
 
 help:
 	@echo "Available commands:"
-	@echo "  up       - Start n8n with docker compose"
+	@echo "  up       - Start n8n with built-in tunnel"
 	@echo "  down     - Stop and remove containers"
 	@echo "  stop     - Stop containers without removing"
 	@echo "  clean    - Remove containers, images and data"
@@ -10,7 +10,10 @@ help:
 	@echo "  shell    - Open shell in running container"
 
 up:
-	mkdir -p data files
+	mkdir -p files
+	@echo "🚀 Starting n8n with built-in tunnel..."
+	@echo "🌐 n8n will automatically create a tunnel for webhooks"
+	@echo "⚠️  Check logs for the tunnel URL: make logs"
 	docker compose up -d
 
 down:

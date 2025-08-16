@@ -1,25 +1,18 @@
 services:
-  traefik:
-    image: traefik:v3.0
-    container_name: n8n-traefik
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=admin@devluchops.com"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n-container
     ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
+      - "5678:5678"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./letsencrypt:/letsencrypt
+      - n8n_data:/home/node/.n8n
+      - ./files:/files
+    env_file:
+      - .env
+    depends_on:
+      - postgres
     restart: unless-stopped
+    command: start --tunnel
 
   postgres:
     image: postgres:15-alpine
@@ -30,28 +23,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n-container
-    volumes:
-      - ./data:/home/n8n/.n8n
-      - ./files:/files
-    env_file:
-      - .env
-    depends_on:
-      - postgres
-      - traefik
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`n8n.devluchops.com`)"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls.certresolver=myresolver"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
-      - "traefik.http.routers.n8n-http.rule=Host(`n8n.devluchops.com`)"
-      - "traefik.http.routers.n8n-http.entrypoints=web"
-      - "traefik.http.routers.n8n-http.middlewares=n8n-https-redirect"
-      - "traefik.http.middlewares.n8n-https-redirect.redirectscheme.scheme=https"
+
 
 volumes:
   postgres_data:
+  n8n_data:
