@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+    volumes:
+      - ./files:/app/files
+    networks:
+      - security-net
+
+  # Database for more realistic testing
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass123
+    ports:
+      - "5432:5432"
+    networks:
+      - security-net
+
+networks:
+  security-net:
+    driver: bridge

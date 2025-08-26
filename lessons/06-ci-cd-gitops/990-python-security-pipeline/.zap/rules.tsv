@@ -1,0 +1,18 @@
+# ZAP Scanning Rules
+# This file contains rules for OWASP ZAP baseline scan
+# Format: RULE_ID	THRESHOLD	[COMMENT]
+
+# Ignore false positives
+10021	IGNORE	# X-Content-Type-Options Header Missing
+10020	IGNORE	# Anti-clickjacking Header
+10016	IGNORE	# Web Browser XSS Protection Not Enabled
+10017	IGNORE	# Cross-Domain Misconfiguration
+
+# Set thresholds for important security issues
+40012	LOW	# Cross Site Scripting (Reflected)
+40014	MEDIUM	# Cross Site Scripting (Persistent)
+40018	HIGH	# SQL Injection
+40019	HIGH	# SQL Injection - MySQL
+40020	HIGH	# SQL Injection - Hypersonic SQL
+40021	HIGH	# SQL Injection - Oracle
+40022	HIGH	# SQL Injection - PostgreSQL

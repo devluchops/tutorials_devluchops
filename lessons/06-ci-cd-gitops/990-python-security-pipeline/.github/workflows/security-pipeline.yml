@@ -1,0 +1,330 @@
+name: GitHub Native Security Pipeline (100% Free)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  # Job 1: CodeQL Analysis (GitHub Native SAST)
+  codeql-analysis:
+    name: CodeQL Security Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python' ]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: ${{ matrix.language }}
+        queries: security-extended,security-and-quality
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: "/language:${{matrix.language}}"
+
+  # Job 2: Python Security & Quality Analysis
+  python-security:
+    name: Python Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install bandit safety pip-audit pytest pytest-cov flake8
+
+    # Run unit tests with coverage
+    - name: Run Unit Tests
+      run: |
+        pytest tests/ --cov=. --cov-report=xml --cov-report=html --cov-report=term
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+    # Bandit - Python security linter
+    - name: Run Bandit Security Scan
+      run: |
+        bandit -r . -f sarif -o bandit-results.sarif || true
+        bandit -r . -ll
+
+    - name: Upload Bandit SARIF results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: bandit-results.sarif
+        category: bandit
+
+    # Safety - Check Python dependencies for known security vulnerabilities
+    - name: Run Safety Check
+      run: |
+        safety check --json --output safety-report.json || true
+        safety check || true
+
+    - name: Upload Safety Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: safety-results
+        path: safety-report.json
+
+    # pip-audit - PyPA's official vulnerability scanner
+    - name: Run pip-audit
+      run: |
+        pip-audit --format=json --output=pip-audit-report.json || true
+        pip-audit || true
+
+    - name: Upload pip-audit Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: pip-audit-results
+        path: pip-audit-report.json
+
+    # Flake8 - Code quality and basic security checks
+    - name: Run Flake8 Linter
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # Job 3: Basic Container Security (GitHub Native)
+  docker-security:
+    name: Docker Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Build Docker Image
+      run: |
+        docker build -t security-app:${{ github.sha }} .
+
+    # Basic Dockerfile security checks using shell commands
+    - name: Dockerfile Security Check
+      run: |
+        echo "🔍 Checking Dockerfile for security issues..."
+        
+        # Check for root user
+        if grep -q "USER root" Dockerfile; then
+          echo "⚠️  WARNING: Running as root user detected"
+        fi
+        
+        # Check for COPY with broad permissions
+        if grep -q "COPY \. \." Dockerfile; then
+          echo "ℹ️  INFO: Copying entire directory - ensure .dockerignore is present"
+        fi
+        
+        # Check for hardcoded secrets (basic patterns)
+        if grep -iE "(password|secret|key|token).*=" Dockerfile; then
+          echo "⚠️  WARNING: Potential hardcoded secrets in Dockerfile"
+        fi
+        
+        # Check for latest tag usage
+        if grep -q ":latest" Dockerfile; then
+          echo "ℹ️  INFO: Using 'latest' tag - consider using specific versions"
+        fi
+        
+        echo "✅ Dockerfile security check completed"
+
+    # Basic image vulnerability check using Docker built-in tools
+    - name: Docker History Analysis
+      run: |
+        echo "📋 Docker image layers analysis:"
+        docker history security-app:${{ github.sha }} --no-trunc
+
+  # Job 4: GitHub Native Secret Scanning Setup
+  secret-scanning-setup:
+    name: Secret Scanning Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Create custom secret scanning patterns if needed
+    - name: Setup Secret Scanning Patterns
+      run: |
+        echo "🔐 Configuring secret scanning patterns..."
+        
+        # Check for common secret patterns manually
+        echo "Checking for potential secrets in codebase..."
+        
+        # API Keys pattern
+        if grep -r -i "api.key.*=" . --exclude-dir={.git,.github} || true; then
+          echo "⚠️  Found potential API key patterns"
+        fi
+        
+        # Password patterns
+        if grep -r -i "password.*=" . --exclude-dir={.git,.github} || true; then
+          echo "⚠️  Found potential password patterns"
+        fi
+        
+        # Token patterns  
+        if grep -r -i "token.*=" . --exclude-dir={.git,.github} || true; then
+          echo "⚠️  Found potential token patterns"
+        fi
+        
+        echo "✅ Manual secret scanning completed"
+        echo "💡 Note: GitHub Secret Scanning is automatically enabled for this repository"
+
+  # Job 5: Security Configuration Checks
+  security-config:
+    name: Security Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check Security Configuration Files
+      run: |
+        echo "🔒 Checking security configuration files..."
+        
+        # Check if Dependabot config exists
+        if [ -f ".github/dependabot.yml" ]; then
+          echo "✅ Dependabot configuration found"
+          cat .github/dependabot.yml
+        else
+          echo "⚠️  Dependabot configuration missing"
+        fi
+        
+        # Check for security policy
+        if [ -f "SECURITY.md" ]; then
+          echo "✅ Security policy found"
+        else
+          echo "ℹ️  Consider adding a SECURITY.md file"
+        fi
+        
+        # Check Python security configurations
+        if [ -f ".bandit" ]; then
+          echo "✅ Bandit configuration found"
+        else
+          echo "ℹ️  Consider adding .bandit configuration"
+        fi
+
+  # Job 6: Generate Security Report
+  security-report:
+    name: Security Summary Report
+    runs-on: ubuntu-latest
+    needs: [codeql-analysis, python-security, docker-security, secret-scanning-setup, security-config]
+    if: always()
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      continue-on-error: true
+
+    - name: Generate Security Report
+      run: |
+        echo "# 🛡️ GitHub Native Security Pipeline Report" > security-summary.md
+        echo "" >> security-summary.md
+        echo "**Repository**: ${{ github.repository }}" >> security-summary.md
+        echo "**Branch**: ${{ github.ref_name }}" >> security-summary.md
+        echo "**Commit**: ${{ github.sha }}" >> security-summary.md
+        echo "**Date**: $(date -u)" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "## 🔍 Security Scans Executed" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "### ✅ GitHub Native Features:" >> security-summary.md
+        echo "- **CodeQL Analysis** - Advanced SAST for Python" >> security-summary.md
+        echo "- **Dependabot Alerts** - Automatic dependency vulnerability detection" >> security-summary.md  
+        echo "- **Secret Scanning** - Automatic secret detection and prevention" >> security-summary.md
+        echo "- **Security Advisories** - GitHub's vulnerability database" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "### 🔧 Open Source Tools:" >> security-summary.md
+        echo "- **Bandit** - Python security linter" >> security-summary.md
+        echo "- **Safety** - Python dependency vulnerability checker" >> security-summary.md
+        echo "- **pip-audit** - PyPA's official security auditor" >> security-summary.md
+        echo "- **Flake8** - Code quality and security linting" >> security-summary.md
+        echo "- **Pytest** - Unit testing with security test coverage" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "### 🐳 Container Security:" >> security-summary.md
+        echo "- **Dockerfile Analysis** - Security best practices verification" >> security-summary.md
+        echo "- **Image Layer Analysis** - Basic vulnerability assessment" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "## 📊 Cost Breakdown" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "- **GitHub Security Features**: $0 (Native)" >> security-summary.md
+        echo "- **CodeQL**: $0 (Free for public repos)" >> security-summary.md
+        echo "- **Dependabot**: $0 (Native)" >> security-summary.md
+        echo "- **Secret Scanning**: $0 (Native for public repos)" >> security-summary.md
+        echo "- **Open Source Tools**: $0" >> security-summary.md
+        echo "- **GitHub Actions Minutes**: Included in free tier" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "**Total Cost: $0** 💰" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "## 🔗 Where to Find Results" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "1. **Security Tab** - All SARIF results from CodeQL and Bandit" >> security-summary.md
+        echo "2. **Actions Tab** - Detailed logs from all security jobs" >> security-summary.md
+        echo "3. **Artifacts** - Download JSON reports from Safety and pip-audit" >> security-summary.md
+        echo "4. **Dependabot Tab** - Dependency vulnerabilities and updates" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "---" >> security-summary.md
+        echo "*Generated by GitHub Native Security Pipeline*" >> security-summary.md
+
+    - name: Upload Security Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-summary-report
+        path: security-summary.md
+
+    # Comment on PR with security summary
+    - name: Comment PR with Security Report
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          if (fs.existsSync('security-summary.md')) {
+            const summary = fs.readFileSync('security-summary.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          }

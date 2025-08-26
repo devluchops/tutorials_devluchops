@@ -1,0 +1,13 @@
+[bandit]
+exclude = tests,venv,.venv
+
+[bandit.assert_used]
+skips = ['*_test.py', '*test_*.py']
+
+[bandit.hardcoded_bind_all_interfaces]
+# Allow binding to all interfaces in development
+skips = ['*']
+
+[bandit.hardcoded_password_string]
+# Skip test files and configuration files
+skips = ['*/test*', '*/tests/*']
