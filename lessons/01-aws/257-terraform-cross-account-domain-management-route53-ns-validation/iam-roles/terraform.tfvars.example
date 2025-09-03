@@ -1,0 +1,51 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Domain Configuration
+domain_name = "devluchops.com"
+
+# Account Configuration
+central_account_id    = "111111111111"  # Replace with actual central account ID
+subdomain_account_id  = "222222222222"  # Replace with actual subdomain account ID
+
+# Single User Configuration
+trusted_user_arn = "arn:aws:iam::111111111111:user/your-username"  # Replace with your actual user ARN
+
+# IAM Role Configuration
+role_name                = "Route53CrossAccountRole"
+role_max_session_duration = 3600  # 1 hour in seconds
+
+# Security Configuration
+external_id = null  # Optional: set a unique string for additional security, e.g., "unique-external-id-123"
+require_mfa = false
+allowed_source_ips = []  # Optional: restrict to specific IPs, e.g., ["203.0.113.0/24", "198.51.100.0/24"]
+max_session_duration = null  # Optional: Unix timestamp for maximum session duration
+
+# Subdomain Restrictions (optional)
+allowed_subdomain_patterns = [
+  "*.devluchops.com",
+  "app.devluchops.com",
+  "api.devluchops.com"
+]
+
+# Optional Permissions
+allow_health_check_management = false
+allow_cloudwatch_integration  = false
+
+# Policy Creation
+create_assume_role_policy = true
+
+# Audit and Compliance
+enable_audit_logging      = false
+audit_log_retention_days  = 90
+
+# Tags
+default_tags = {
+  Terraform   = "true"
+  Project     = "cross-account-domain-management"
+  Owner       = "devops-team"
+  Environment = "production"
+  CostCenter  = "infrastructure"
+  Component   = "iam-cross-account"
+  Domain      = "devluchops.com"
+}

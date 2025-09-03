@@ -1,0 +1,74 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Domain Configuration
+subdomain_name = "app.devluchops.com"
+parent_domain  = "devluchops.com"
+environment    = "production"
+
+# Cross-Account Configuration
+central_account_id      = "111111111111"  # Replace with actual central account ID
+cross_account_role_arn  = "arn:aws:iam::111111111111:role/Route53CrossAccountRole"  # Replace with actual role ARN
+external_id            = null  # Optional: set if using external ID for additional security
+
+# DNS Records Configuration
+ns_record_ttl = 300
+record_ttl    = 300
+
+# Subdomain A Record (optional)
+create_subdomain_a_record = true
+subdomain_ip             = "203.0.113.100"  # Replace with your actual IP address
+
+# Additional DNS Records
+cname_records = {
+  "www.app.devluchops.com"   = "app.devluchops.com"
+  "api.app.devluchops.com"   = "app.devluchops.com"
+  "admin.app.devluchops.com" = "app.devluchops.com"
+}
+
+txt_records = {
+  "app.devluchops.com"           = "v=verification-123456789abcdef"
+  "_dmarc.app.devluchops.com"    = "v=DMARC1; p=none; rua=mailto:dmarc@devluchops.com"
+}
+
+a_records = {
+  "api.app.devluchops.com" = "203.0.113.101"
+  "cdn.app.devluchops.com" = "203.0.113.102"
+}
+
+aaaa_records = {
+  "app.devluchops.com" = "2001:db8::1"
+}
+
+# Email Configuration for Subdomain (optional)
+mx_records = [
+  "10 mail.app.devluchops.com",
+  "20 backup-mail.app.devluchops.com"
+]
+
+# Monitoring Configuration (optional)
+enable_dns_logging     = false
+dns_log_retention_days = 30
+
+create_health_check            = false
+health_check_port             = 80
+health_check_type             = "HTTP"
+health_check_path             = "/health"
+health_check_failure_threshold = 3
+health_check_interval         = 30
+health_check_alarm_actions    = []
+
+# Safety Configuration
+force_destroy_hosted_zone = false
+
+# Tags
+default_tags = {
+  Terraform    = "true"
+  Project      = "cross-account-domain-management"
+  Owner        = "devops-team"
+  Environment  = "production"
+  CostCenter   = "infrastructure"
+  Subdomain    = "app.devluchops.com"
+  ParentDomain = "devluchops.com"
+  AccountType  = "subdomain-account"
+}

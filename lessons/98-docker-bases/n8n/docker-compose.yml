@@ -12,7 +12,8 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
-    command: start --tunnel
+    #command: start --tunnel
+    command: start
 
   postgres:
     image: postgres:15-alpine

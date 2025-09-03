@@ -1,0 +1,52 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Domain Configuration
+domain_name = "devluchops.com"
+environment = "production"
+
+# Cross-Account Configuration
+subdomain_account_id = "222222222222"  # Replace with actual subdomain account ID
+
+# DNS Records Configuration
+create_main_a_record = true
+main_domain_ip       = "203.0.113.1"  # Replace with your actual IP address
+create_www_record    = true
+
+# Email Configuration (optional)
+create_mx_records = false
+mx_records = [
+  "10 mail.devluchops.com",
+  "20 backup-mail.devluchops.com"
+]
+
+create_spf_record = false
+spf_record = "v=spf1 include:_spf.google.com ~all"
+
+# Monitoring Configuration (optional)
+enable_dns_logging     = false
+dns_log_retention_days = 30
+
+create_health_check          = false
+health_check_port           = 80
+health_check_type           = "HTTP"
+health_check_path           = "/health"
+health_check_failure_threshold = 3
+health_check_interval       = 30
+health_check_alarm_actions  = []
+
+# Domain Verification
+create_verification_record = true
+
+# Safety Configuration
+force_destroy_hosted_zone = false
+
+# Tags
+default_tags = {
+  Terraform   = "true"
+  Project     = "cross-account-domain-management"
+  Owner       = "devops-team"
+  Environment = "production"
+  CostCenter  = "infrastructure"
+  Domain      = "devluchops.com"
+}
